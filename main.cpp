@@ -27,10 +27,8 @@ void entity_cache_thread(c_game* game) {
     std::vector<c_cs_player_pawn*> temp_players{};
 
     const auto client_base = game->get_client_base();
-    if (!client_base) {
-        MessageBoxA(0, std::to_string(client_base).c_str(), 0, 0);
+    if (!client_base)
         return;
-    }
 
     while (true) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
@@ -339,4 +337,5 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR cmd_li
     ::DestroyWindow(hwnd);
     ::UnregisterClass(wc.lpszClassName, wc.hInstance);
     return EXIT_SUCCESS;
+
 }
