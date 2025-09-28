@@ -1,23 +1,25 @@
 #include "utils.hpp"
 
+#include <format>
+#include <string>
+
 void utils::show_last_error(LPCWSTR context) {
-    DWORD errorCode = GetLastError();
-    LPWSTR messageBuffer = nullptr;
+    DWORD error_code = GetLastError();
+    LPWSTR message_buffer = nullptr;
 
     FormatMessageW(
         FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
         nullptr,
-        errorCode,
+        error_code,
         0, // Default language
-        (LPWSTR)&messageBuffer,
+        reinterpret_cast<LPWSTR>(&message_buffer),
         0,
         nullptr
     );
 
-    WCHAR fullMessage[512];
-    wsprintfW(fullMessage, L"%s failed with error %lu:\n%s", context, errorCode, messageBuffer);
+    std::wstring full_message = std::format(L"{} failed with error {}:\n{}", context, error_code, message_buffer);
 
-    MessageBoxW(nullptr, fullMessage, L"", MB_ICONERROR | MB_OK);
+    MessageBoxW(nullptr, full_message.c_str(), L"", MB_ICONERROR | MB_OK);
 
-    LocalFree(messageBuffer);
+    LocalFree(message_buffer);
 }

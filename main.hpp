@@ -1,9 +1,4 @@
 #pragma once
-// Used only to store global variables.
-
-struct vec2_t {
-	float x{}, y{};
-};
 
 struct config_t {
 	int pos_x{20};

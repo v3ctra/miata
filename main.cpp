@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <fstream>
 #include <sstream>
+#include <numbers>
 #include <string>
 #include <map>
 
@@ -24,18 +25,39 @@ std::mutex m_players_mutex{};
 
 void entity_cache_thread(c_game* game) {
     std::vector<c_cs_player_pawn*> temp_players{};
+
+    const auto client_base = game->get_client_base();
+    if (!client_base)
+        return;
+
     while (true) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-        uintptr_t entity_list = game->read<uintptr_t>(game->get_client_base() + offsets::dwEntityList);//dwEntityList
+        const auto entity_list = game->read<uintptr_t>(client_base + offsets::dwEntityList).value_or(0);
+        if (!entity_list)
+            continue;
+
         temp_players.clear();
         for (int i = 1; i < 64; i++) {
-            uintptr_t list_entity_controller = game->read<uintptr_t>(entity_list + ((8 * (i & 0x7FFF) >> 9) + 16));
-            uintptr_t entity_controller = game->read<uintptr_t>(list_entity_controller + (120) * (i & 0x1FF));
+            const auto list_entity_controller = game->read<uintptr_t>(entity_list + ((8 * (i & 0x7FFF) >> 9) + 16)).value_or(0);
+            if (!list_entity_controller)
+                continue;
 
-            uintptr_t entity_controller_pawn = game->read<uintptr_t>(entity_controller + offsets::m_hPlayerPawn); 
-            uintptr_t list_entity = game->read<uintptr_t>(entity_list + (0x8 * ((entity_controller_pawn & 0x7FFF) >> 9) + 16));
+            const auto entity_controller = game->read<uintptr_t>(list_entity_controller + (120) * (i & 0x1FF)).value_or(0);
+            if (!entity_controller)
+                continue;
 
-            c_cs_player_pawn* entity = game->read<c_cs_player_pawn*>(list_entity + (120) * (entity_controller_pawn & 0x1FF));
+            const auto entity_controller_pawn = game->read<uintptr_t>(entity_controller + offsets::m_hPlayerPawn).value_or(0);
+            if (!entity_controller_pawn)
+                continue;
+
+            const auto list_entity = game->read<uintptr_t>(entity_list + (0x8 * ((entity_controller_pawn & 0x7FFF) >> 9) + 16)).value_or(0);
+            if (!list_entity)
+                continue;
+
+            const auto entity = game->read<c_cs_player_pawn*>(list_entity + (120) * (entity_controller_pawn & 0x1FF)).value_or(nullptr);
+            if (!entity)
+                continue;
+
             temp_players.emplace_back(entity);
         }
         {
@@ -47,15 +69,15 @@ void entity_cache_thread(c_game* game) {
 
 void rotate_point(vec2_t point_to_rotate, vec2_t* mid_point, float angle, vec2_t* out) {
     // Convert our angle from degrees to radians.
-    angle = static_cast<float>(angle * (3.14 / 180.f));//std::numbers::
+    angle = static_cast<float>(angle * (std::numbers::pi / 180.f));
 
     // Get our current angle as a cosine and sine.
-    float cosAngle = (float)cos(angle);
-    float sinAngle = (float)sin(angle);
+    float cos_angle = std::cos(angle);
+    float sin_angle = std::sin(angle);
 
     // Calculate the rotation.
-    out->x = cosAngle * (point_to_rotate.x - mid_point->x) - sinAngle * (point_to_rotate.y - mid_point->y);
-    out->y = sinAngle * (point_to_rotate.x - mid_point->x) + cosAngle * (point_to_rotate.y - mid_point->y);
+    out->x = cos_angle * (point_to_rotate.x - mid_point->x) - sin_angle * (point_to_rotate.y - mid_point->y);
+    out->y = sin_angle * (point_to_rotate.x - mid_point->x) + cos_angle * (point_to_rotate.y - mid_point->y);
 
     // Add the mid-point to the calculated point.
     out->x += mid_point->x;
@@ -67,9 +89,14 @@ std::mutex radar_points_mutex{};
 
 void entity_data_thread(c_game* game) {
     std::vector<vec2_t> temp_radar_points{};
+
+    const auto client_base = game->get_client_base();
+    if (!client_base)
+        return;
+
     while (true) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        c_cs_player_pawn* local_pawn = game->read<c_cs_player_pawn*>(game->get_client_base() + offsets::dwLocalPlayerPawn);
+        const auto local_pawn = game->read<c_cs_player_pawn*>(client_base + offsets::dwLocalPlayerPawn).value_or(nullptr);
         if (!local_pawn)
             continue;
 
@@ -77,12 +104,10 @@ void entity_data_thread(c_game* game) {
         int local_team = local_pawn->m_iTeamNum(game);
 
         vec2_t radar_center{};
-
-        // Get the center of our radar position.
         radar_center.x = (static_cast<float>(g_config.size_w) / 2);
         radar_center.y = (static_cast<float>(g_config.size_h) / 2);
 
-        vec3_t viewangles = game->read<vec3_t>(game->get_client_base() + offsets::dwViewAngles);
+        vec3_t viewangles = game->read<vec3_t>(client_base + offsets::dwViewAngles).value();
 
         temp_radar_points.clear();
         std::unique_lock<std::mutex> lock(m_players_mutex);
@@ -93,11 +118,13 @@ void entity_data_thread(c_game* game) {
             if (players->m_iHealth(game) <= 0)
                 continue;
 
-            vec2_t screen_pos{};
-
             // Get player radar position.
             vec3_t origin = players->m_vOldOrigin(game);
-            screen_pos.x = (local_pos.x - origin.x) / 15;
+            if (origin.is_zero())
+                continue;
+
+            vec2_t screen_pos{};
+            screen_pos.x = (local_pos.x - origin.x) / 15; //scale. 
             screen_pos.y = (local_pos.y - origin.y) / 15;
 
             // Prevent inverted x axis position.
@@ -112,8 +139,8 @@ void entity_data_thread(c_game* game) {
             rotate_point(screen_pos, &radar_center, viewangles.y - 90.f, &rotated_point);
 
             // Prevent player from going out of bounds.
-            rotated_point.x = std::clamp(rotated_point.x, 5.f, static_cast<float>(g_config.size_w) - 9);
-            rotated_point.y = std::clamp(rotated_point.y, 5.f, static_cast<float>(g_config.size_h) - 9);
+            rotated_point.x = std::clamp(rotated_point.x, 5.f, static_cast<float>(g_config.size_w) - 10.f);
+            rotated_point.y = std::clamp(rotated_point.y, 5.f, static_cast<float>(g_config.size_h) - 10.f);
 
             // Store the point in the list
             temp_radar_points.emplace_back(vec2_t{ rotated_point.x, rotated_point.y });
@@ -145,7 +172,7 @@ bool parse_config(const std::string& filename, config_map& config) {
         return false;
     }
 
-    std::string line;
+    std::string line{};
     while (std::getline(file, line)) {
         if (line.empty() || line.find('=') == std::string::npos) continue;
 
@@ -154,7 +181,7 @@ bool parse_config(const std::string& filename, config_map& config) {
         std::string value_str = line.substr(pos + 1);
 
         std::istringstream key_stream(key);
-        std::string part;
+        std::string part{};
         std::string parts[3];
         int idx = 0;
         while (std::getline(key_stream, part, '.') && idx < 3) {
@@ -185,7 +212,7 @@ void send_points_to_serial(const std::vector<vec2_t>& points, HANDLE& hSerial) {
 
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR cmd_line, int cmd_show) {
     config_map config{};
-    bool success = parse_config("settings.txt", config);// Example: Access radar.pos.x
+    bool success = parse_config("settings.txt", config);
     if (success) {
         g_config.pos_x = config["radar"]["pos"]["x"];
         g_config.pos_y = config["radar"]["pos"]["y"];
@@ -224,7 +251,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR cmd_li
     }
 
     // Step 2: Create the window
-    HWND hwnd = CreateWindowExW(
+    HWND hwnd = CreateWindowEx(
         WS_EX_TOPMOST,
         CLASS_NAME,
         WINDOW_NAME,
@@ -244,9 +271,10 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR cmd_li
     }
 
     if (g_config.hide_from_recording == 1) {
-        BOOL result = SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE);
-        if (!result)
-            MessageBox(0, L"Failed to hide window from capture.", 0, MB_OK | MB_ICONWARNING);
+        BOOL result = SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE); // introduced in windows 10 2004
+        if (!result) {
+            utils::show_last_error(L"SetWindowDisplayAffinity"); // not a critical failure.
+        }
     }
 
     ShowWindow(hwnd, cmd_show);
@@ -306,14 +334,22 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR cmd_li
                 queue.push_filled_rectangle({ pt.x, pt.y }, { 5, 5 }, daisy::color_t(0, 255, 0, 255));
             }
         }
+
+        // Vertical center line
+        queue.push_line({ static_cast<float>(g_config.size_w / 2.f), 0.f }, { static_cast<float>(g_config.size_w / 2.f), static_cast<float>(g_config.size_h) }, daisy::color_t(0, 255, 0, 128));
+
+        // Horizontal center line
+        queue.push_line({ 0, static_cast<float>(g_config.size_h / 2.f) }, { static_cast<float>(g_config.size_w), static_cast<float>(g_config.size_h / 2.f) }, daisy::color_t(0, 255, 0, 128));
         
         queue.flush();
         device.get()->EndScene();
         device.get()->Present(nullptr, nullptr, nullptr, nullptr);
 
-        // 60 fps
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        // 60 fps (vsync btw)
+        //std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
+
+    daisy::daisy_shutdown();
 
     ::DestroyWindow(hwnd);
     ::UnregisterClass(wc.lpszClassName, wc.hInstance);
