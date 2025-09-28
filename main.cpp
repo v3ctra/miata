@@ -27,8 +27,10 @@ void entity_cache_thread(c_game* game) {
     std::vector<c_cs_player_pawn*> temp_players{};
 
     const auto client_base = game->get_client_base();
-    if (!client_base)
+    if (!client_base) {
+        MessageBoxA(0, std::to_string(client_base).c_str(), 0, 0);
         return;
+    }
 
     while (true) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
@@ -67,23 +69,6 @@ void entity_cache_thread(c_game* game) {
     }
 }
 
-void rotate_point(vec2_t point_to_rotate, vec2_t* mid_point, float angle, vec2_t* out) {
-    // Convert our angle from degrees to radians.
-    angle = static_cast<float>(angle * (std::numbers::pi / 180.f));
-
-    // Get our current angle as a cosine and sine.
-    float cos_angle = std::cos(angle);
-    float sin_angle = std::sin(angle);
-
-    // Calculate the rotation.
-    out->x = cos_angle * (point_to_rotate.x - mid_point->x) - sin_angle * (point_to_rotate.y - mid_point->y);
-    out->y = sin_angle * (point_to_rotate.x - mid_point->x) + cos_angle * (point_to_rotate.y - mid_point->y);
-
-    // Add the mid-point to the calculated point.
-    out->x += mid_point->x;
-    out->y += mid_point->y;
-}
-
 std::vector<vec2_t> radar_points{};
 std::mutex radar_points_mutex{};
 
@@ -96,6 +81,10 @@ void entity_data_thread(c_game* game) {
 
     while (true) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        vec3_t viewangles = game->read<vec3_t>(client_base + offsets::dwViewAngles).value();
+		if (viewangles.is_zero()) // probably not even in the game
+			continue;
+
         const auto local_pawn = game->read<c_cs_player_pawn*>(client_base + offsets::dwLocalPlayerPawn).value_or(nullptr);
         if (!local_pawn)
             continue;
@@ -106,8 +95,6 @@ void entity_data_thread(c_game* game) {
         vec2_t radar_center{};
         radar_center.x = (static_cast<float>(g_config.size_w) / 2);
         radar_center.y = (static_cast<float>(g_config.size_h) / 2);
-
-        vec3_t viewangles = game->read<vec3_t>(client_base + offsets::dwViewAngles).value();
 
         temp_radar_points.clear();
         std::unique_lock<std::mutex> lock(m_players_mutex);
@@ -135,8 +122,7 @@ void entity_data_thread(c_game* game) {
             screen_pos.y += radar_center.y;
 
             // Rotate the point based on our yaw.
-            vec2_t rotated_point{};
-            rotate_point(screen_pos, &radar_center, viewangles.y - 90.f, &rotated_point);
+            vec2_t rotated_point = screen_pos.rotate_point(&radar_center, viewangles.y - 90.f);
 
             // Prevent player from going out of bounds.
             rotated_point.x = std::clamp(rotated_point.x, 5.f, static_cast<float>(g_config.size_w) - 10.f);
@@ -286,8 +272,6 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR cmd_li
     // you probably want to call this each frame before flushing render queues
     daisy::daisy_prepare();
 
-    bool done = false;
-
     daisy::c_renderqueue queue{};
     if (!queue.create(64, 128)) {
         return MessageBox(0, L"Failed to create buffer queue.", 0, MB_OK | MB_ICONERROR);
@@ -311,6 +295,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR cmd_li
     dcbSerialParams.Parity = NOPARITY;
     SetCommState(hSerial, &dcbSerialParams);
     */
+    bool done = false;
     while (!done || FindWindow(L"SDL_app", L"Counter-Strike 2") || !GetAsyncKeyState(VK_DELETE) & 1) {
         MSG msg{};
         while (::PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE)) {
@@ -346,7 +331,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR cmd_li
         device.get()->Present(nullptr, nullptr, nullptr, nullptr);
 
         // 60 fps (vsync btw)
-        //std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
     daisy::daisy_shutdown();

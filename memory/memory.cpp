@@ -24,11 +24,11 @@ bool c_game::initialize() {
     if (m_process_id == 0)
         return false;
 
-    while (!m_client_base.has_value()) {
+    while (m_client_base == 0) {
         m_client_base = get_module_by_name(m_process_id.value(), L"client.dll");
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
-    return m_client_base.has_value() && m_process_id.has_value() && m_process_handle != nullptr;
+    return m_client_base != 0 && m_process_id != 0 && m_process_handle != nullptr;
 }
 
 std::optional<DWORD64> c_memory::get_module_by_name(DWORD pid, const std::wstring_view& target_module) {
@@ -46,8 +46,9 @@ std::optional<DWORD64> c_memory::get_module_by_name(DWORD pid, const std::wstrin
     }
 
     do {
-        if (target_module.compare(entry.szModule) == 0)
+        if (target_module.compare(entry.szModule) == 0) {
             return reinterpret_cast<DWORD64>(entry.modBaseAddr);
+        }
     } while (Module32NextW(snapshot.get(), &entry));
 
     return std::nullopt;
