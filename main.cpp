@@ -2,6 +2,7 @@
 #include <thread>
 #include <mutex>
 
+#include <xmmintrin.h>
 #include <algorithm>
 #include <fstream>
 #include <sstream>
@@ -27,8 +28,9 @@ void entity_cache_thread(c_game* game) {
     std::vector<c_cs_player_pawn*> temp_players{};
 
     const auto client_base = game->get_client_base();
-    if (!client_base)
+    if (!client_base) {
         return;
+    }
 
     while (true) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
@@ -181,18 +183,6 @@ bool parse_config(const std::string& filename, config_map& config) {
 
     return true;
 }
-/*
-void send_points_to_serial(const std::vector<vec2_t>& points, HANDLE& hSerial) {
-    for (const auto& p : points) {
-        std::ostringstream ss;
-        ss << static_cast<int>(p.x) << "," << static_cast<int>(p.y) << "\n";
-        std::string out = ss.str();
-        DWORD written;
-        WriteFile(hSerial, out.c_str(), out.size(), &written, nullptr);
-    }
-    DWORD written2;
-    WriteFile(hSerial, "END\n", 4, &written2,nullptr); // Signal end of frame
-}*/
 
 int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR cmd_line, int cmd_show) {
     config_map config{};
@@ -213,8 +203,23 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR cmd_li
         g_config.hide_from_recording = 0;
     }
 
-    c_game game{};
-    if (!game.initialize()) {
+    bool offsets_parser = parse_config("offsets.txt", config);
+    if (offsets_parser) {
+        offsets::dwLocalPlayerPawn = config["offsets"]["client"]["dwLocalPlayerPawn"];
+        offsets::dwEntityList = config["offsets"]["client"]["dwEntityList"];
+        offsets::dwViewAngles = config["offsets"]["client"]["dwViewAngles"];
+
+        offsets::m_hPlayerPawn = config["offsets"]["client"]["m_hPlayerPawn"];
+        offsets::m_iHealth = config["offsets"]["client"]["m_iHealth"];
+        offsets::m_iTeamNum = config["offsets"]["client"]["m_iTeamNum"];
+        offsets::m_vOldOrigin = config["offsets"]["client"]["m_vOldOrigin"];
+    }
+    else {
+        return MessageBox(0, L"Failed to parse offsets.", 0, MB_OK | MB_ICONERROR);
+    }
+
+    const auto game = std::make_unique<c_game>();
+    if (!game->initialize()) {
         MessageBox(0, L"Failed to query game info.", 0, MB_OK | MB_ICONERROR);
         return EXIT_FAILURE;
     }
@@ -249,14 +254,13 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR cmd_li
         return EXIT_FAILURE;
     }
 
-    c_d3d_device device(hwnd, true);
-    if (!device.initialize(g_config.size_w, g_config.size_h)) {
+    const auto device = std::make_unique<c_d3d_device>(hwnd, true);
+    if (!device->initialize(g_config.size_w, g_config.size_h)) {
         return EXIT_FAILURE;
     }
 
     if (g_config.hide_from_recording == 1) {
-        BOOL result = SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE); // introduced in windows 10 2004
-        if (!result) {
+        if (const auto result = SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE); !result) { // introduced in windows 10 2004
             utils::show_last_error(L"SetWindowDisplayAffinity"); // not a critical failure.
         }
     }
@@ -270,29 +274,14 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR cmd_li
     // you probably want to call this each frame before flushing render queues
     daisy::daisy_prepare();
 
-    daisy::c_renderqueue queue{};
-    if (!queue.create(64, 128)) {
+    const auto queue = std::make_unique<daisy::c_renderqueue>();
+    if (!queue->create(64, 128)) {
         return MessageBox(0, L"Failed to create buffer queue.", 0, MB_OK | MB_ICONERROR);
     }
 
-    std::thread cache_thread(entity_cache_thread, &game); cache_thread.detach();
-    std::thread data_thread(entity_data_thread, &game); data_thread.detach();
-    /*
-    HANDLE hSerial = CreateFile(L"\\\\.\\COM5", GENERIC_WRITE, 0, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
-    if (hSerial == INVALID_HANDLE_VALUE) {
-       // std::cout << "Error opening serial port.\n";
-        return 1;
-    }
-
-    DCB dcbSerialParams = { 0 };
-    dcbSerialParams.DCBlength = sizeof(dcbSerialParams);
-    GetCommState(hSerial, &dcbSerialParams);
-    dcbSerialParams.BaudRate = CBR_115200;
-    dcbSerialParams.ByteSize = 8;
-    dcbSerialParams.StopBits = ONESTOPBIT;
-    dcbSerialParams.Parity = NOPARITY;
-    SetCommState(hSerial, &dcbSerialParams);
-    */
+    std::thread cache_thread(entity_cache_thread, game.get()); cache_thread.detach();
+    std::thread data_thread(entity_data_thread, game.get()); data_thread.detach();
+   
     bool done = false;
     while (!done || FindWindow(L"SDL_app", L"Counter-Strike 2") || !GetAsyncKeyState(VK_DELETE) & 1) {
         MSG msg{};
@@ -305,28 +294,23 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR cmd_li
         if (done)
             break;
         
-        device.get()->Clear(0, nullptr, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, D3DCOLOR_RGBA(0, 0, 0, 255), 1.0f, 0);
-        device.get()->BeginScene();
-        
-        queue.clear();
-        
-        {
-            std::unique_lock<std::mutex> lock(radar_points_mutex);
-          //  send_points_to_serial(radar_points,hSerial);
-            for (const auto& pt : radar_points) {
-                queue.push_filled_rectangle({ pt.x, pt.y }, { 5, 5 }, daisy::color_t(0, 255, 0, 255));
+        if (device->begin_rendering()) {
+            queue->clear();
+            {
+                std::unique_lock<std::mutex> lock(radar_points_mutex);
+                //  send_points_to_serial(radar_points,hSerial);
+                for (const auto& pt : radar_points) {
+                    queue->push_filled_rectangle({ pt.x, pt.y }, { 5, 5 }, daisy::color_t(0, 255, 0, 255));
+                }
             }
+            // Vertical center line
+            queue->push_line({ static_cast<float>(g_config.size_w / 2.f), 0.f }, { static_cast<float>(g_config.size_w / 2.f), static_cast<float>(g_config.size_h) }, daisy::color_t(0, 255, 0, 128));
+            // Horizontal center line
+            queue->push_line({ 0, static_cast<float>(g_config.size_h / 2.f) }, { static_cast<float>(g_config.size_w), static_cast<float>(g_config.size_h / 2.f) }, daisy::color_t(0, 255, 0, 128));
+
+            queue->flush();
+            device->end_rendering();
         }
-
-        // Vertical center line
-        queue.push_line({ static_cast<float>(g_config.size_w / 2.f), 0.f }, { static_cast<float>(g_config.size_w / 2.f), static_cast<float>(g_config.size_h) }, daisy::color_t(0, 255, 0, 128));
-
-        // Horizontal center line
-        queue.push_line({ 0, static_cast<float>(g_config.size_h / 2.f) }, { static_cast<float>(g_config.size_w), static_cast<float>(g_config.size_h / 2.f) }, daisy::color_t(0, 255, 0, 128));
-        
-        queue.flush();
-        device.get()->EndScene();
-        device.get()->Present(nullptr, nullptr, nullptr, nullptr);
 
         // 60 fps (vsync btw)
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -337,5 +321,4 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR cmd_li
     ::DestroyWindow(hwnd);
     ::UnregisterClass(wc.lpszClassName, wc.hInstance);
     return EXIT_SUCCESS;
-
 }

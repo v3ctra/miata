@@ -18,7 +18,7 @@ bool c_d3d_device::initialize(const int& width, const int& height) {
 	m_params.BackBufferHeight = height;
 	m_params.EnableAutoDepthStencil = TRUE;
 	m_params.AutoDepthStencilFormat = D3DFMT_D16;
-	m_params.PresentationInterval = m_vsync ? D3DPRESENT_INTERVAL_ONE : D3DPRESENT_INTERVAL_IMMEDIATE; // V-sync (one), TODO; customizable. D3DPRESENT_INTERVAL_ONE
+	m_params.PresentationInterval = m_vsync ? D3DPRESENT_INTERVAL_ONE : D3DPRESENT_INTERVAL_IMMEDIATE; // V-sync (one), TODO; customizable.
 
 	HRESULT res = m_d3d->CreateDevice(
 		D3DADAPTER_DEFAULT,
@@ -47,4 +47,14 @@ bool c_d3d_device::initialize(const int& width, const int& height) {
 	daisy::daisy_initialize(m_device.Get());
 
 	return true;
+}
+
+bool c_d3d_device::begin_rendering() {
+	m_device->Clear(0, nullptr, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, D3DCOLOR_RGBA(0, 0, 0, 255), 1.0f, 0);
+	return m_device->BeginScene() == D3D_OK;
+}
+
+void c_d3d_device::end_rendering() {
+	m_device->EndScene();
+	m_device->Present(nullptr, nullptr, nullptr, nullptr);
 }

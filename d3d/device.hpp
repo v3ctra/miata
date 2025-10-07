@@ -13,6 +13,9 @@ public:
 
     bool initialize(const int& width, const int& height);
 
+    bool begin_rendering();
+    void end_rendering();
+
     const auto& get() noexcept {
         return m_device;
     }
