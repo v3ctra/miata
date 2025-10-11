@@ -220,8 +220,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR cmd_li
 
     const auto game = std::make_unique<c_game>();
     if (!game->initialize()) {
-        MessageBox(0, L"Failed to query game info.", 0, MB_OK | MB_ICONERROR);
-        return EXIT_FAILURE;
+        return MessageBox(0, L"Failed to query game info.", 0, MB_OK | MB_ICONERROR);;
     }
     
     const wchar_t WINDOW_NAME[] = L"Miata(c) staromodny";
@@ -235,8 +234,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR cmd_li
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
 
     if (!RegisterClass(&wc)) {
-        utils::show_last_error(L"RegisterClass");
-        return EXIT_FAILURE;
+        return utils::show_last_error(L"RegisterClass");
     }
 
     // Step 2: Create the window
@@ -250,8 +248,7 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR cmd_li
     );
 
     if (!hwnd) {
-        utils::show_last_error(L"CreateWindowEx");
-        return EXIT_FAILURE;
+        return utils::show_last_error(L"CreateWindowEx");
     }
 
     const auto device = std::make_unique<c_d3d_device>(hwnd, true);

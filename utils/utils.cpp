@@ -3,7 +3,7 @@
 #include <format>
 #include <string>
 
-void utils::show_last_error(LPCWSTR context) {
+int utils::show_last_error(LPCWSTR context) {
     DWORD error_code = GetLastError();
     LPWSTR message_buffer = nullptr;
 
@@ -12,14 +12,13 @@ void utils::show_last_error(LPCWSTR context) {
         nullptr,
         error_code,
         0, // Default language
-        reinterpret_cast<LPWSTR>(&message_buffer),
+        std::bit_cast<LPWSTR>(&message_buffer),
         0,
         nullptr
     );
 
     std::wstring full_message = std::format(L"{} failed with error {}:\n{}", context, error_code, message_buffer);
-
-    MessageBoxW(nullptr, full_message.c_str(), L"", MB_ICONERROR | MB_OK);
-
     LocalFree(message_buffer);
+
+    return MessageBoxW(nullptr, full_message.c_str(), L"", MB_ICONERROR | MB_OK);
 }

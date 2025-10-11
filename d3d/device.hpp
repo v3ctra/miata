@@ -17,7 +17,7 @@ public:
     void end_rendering();
 
     const auto& get() noexcept {
-        return m_device;
+        return this->m_device;
     }
 private:
     D3DPRESENT_PARAMETERS m_params{};

@@ -5,7 +5,7 @@
 struct vec3_t {
     constexpr vec3_t(const float x = 0.f, const float y = 0.f, const float z = 0.f) : x(x), y(y), z(z) { }
 
-	const auto& is_zero() noexcept {
+    [[nodiscard]] const auto& is_zero() noexcept {
 		return (this->x == 0.f && this->y == 0.f && this->z == 0.f);
 	}
 
@@ -15,7 +15,7 @@ struct vec3_t {
 struct vec2_t {
     constexpr vec2_t(const float x = 0.f, const float y = 0.f) : x(x), y(y) { }
 
-    const auto& is_zero() noexcept {
+    [[nodiscard]] const auto& is_zero() noexcept {
         return (this->x == 0.f && this->y == 0.f);
     }
 
@@ -45,13 +45,13 @@ struct vec2_t {
 
 class c_cs_player_pawn {
 public:
-    int m_iHealth(c_game* game) {
-        return game->read<int>(reinterpret_cast<uintptr_t>(this) + offsets::m_iHealth).value_or(0);
+    int m_iHealth(c_game* game) const {
+        return game->read<int>(std::bit_cast<uintptr_t>(this) + offsets::m_iHealth).value_or(0);
     }
-    int m_iTeamNum(c_game* game) {
-        return game->read<int>(reinterpret_cast<uintptr_t>(this) + offsets::m_iTeamNum).value_or(0);
+    int m_iTeamNum(c_game* game) const {
+        return game->read<int>(std::bit_cast<uintptr_t>(this) + offsets::m_iTeamNum).value_or(0);
     }
-    vec3_t m_vOldOrigin(c_game* game) {
-        return game->read<vec3_t>(reinterpret_cast<uintptr_t>(this) + offsets::m_vOldOrigin).value_or(vec3_t(0, 0, 0));
+    vec3_t m_vOldOrigin(c_game* game) const {
+        return game->read<vec3_t>(std::bit_cast<uintptr_t>(this) + offsets::m_vOldOrigin).value_or(vec3_t(0, 0, 0));
     }
 };

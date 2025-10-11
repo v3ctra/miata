@@ -17,7 +17,7 @@ using unique_handle = std::unique_ptr<HANDLE, handle_disposer_t>;
 
 class c_memory {
 public:
-    std::optional<DWORD64> get_module_by_name(DWORD pid, const std::wstring_view& target_module);
+    std::optional<uintptr_t> get_module_by_name(DWORD pid, const std::wstring_view& target_module);
     std::optional<unique_handle> open_process(DWORD pid, DWORD access_flags);
 };
 
@@ -27,17 +27,17 @@ public:
     ~c_game() { }
     bool initialize();
 
-    const auto& get_client_base() noexcept { return m_client_base.value(); }
+    const auto& get_client_base() noexcept { return this->m_client_base.value(); }
 
     template <typename T>
     constexpr std::optional<T> read(const std::uintptr_t& address) const noexcept {
         T value = { };
-        if (::ReadProcessMemory(m_process_handle.get(), reinterpret_cast<const void*>(address), &value, sizeof(T), nullptr))
+        if (::ReadProcessMemory(this->m_process_handle.get(), reinterpret_cast<const void*>(address), &value, sizeof(T), nullptr))
             return value;
         return std::nullopt;
     }
 private:
     unique_handle m_process_handle{};
-    std::optional<DWORD64> m_client_base{};
+    std::optional<uintptr_t> m_client_base{};
     std::optional<DWORD> m_process_id{};
 };

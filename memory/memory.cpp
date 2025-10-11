@@ -47,7 +47,7 @@ std::optional<DWORD64> c_memory::get_module_by_name(DWORD pid, const std::wstrin
 
     do {
         if (target_module.compare(entry.szModule) == 0) {
-            return reinterpret_cast<DWORD64>(entry.modBaseAddr);
+            return std::bit_cast<uintptr_t>(entry.modBaseAddr);
         }
     } while (Module32NextW(snapshot.get(), &entry));
 
