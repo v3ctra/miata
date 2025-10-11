@@ -26,3 +26,6 @@ offsets.client.m_iTeamNum=1003
 offsets.client.m_vOldOrigin=5560
 ```
 Updated offsets can be found [HERE](https://github.com/a2x/cs2-dumper/blob/main/output/offsets.json). and [HERE](https://github.com/a2x/cs2-dumper/blob/main/output/client_dll.json).
+
+## Community
+Join the community... https://t.me/precache
