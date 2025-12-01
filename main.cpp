@@ -48,7 +48,7 @@ static void entity_cache_thread(c_game* game) {
             if (!list_entity_controller)
                 continue;
 
-            const auto entity_controller = game->read<uintptr_t>(list_entity_controller + (120) * (i & 0x1FF)).value_or(0);
+            const auto entity_controller = game->read<uintptr_t>(list_entity_controller + (112) * (i & 0x1FF)).value_or(0);
             if (!entity_controller)
                 continue;
 
@@ -60,7 +60,7 @@ static void entity_cache_thread(c_game* game) {
             if (!list_entity)
                 continue;
 
-            const auto entity = game->read<c_cs_player_pawn*>(list_entity + (120) * (entity_controller_pawn & 0x1FF)).value_or(nullptr);
+            const auto entity = game->read<c_cs_player_pawn*>(list_entity + (112) * (entity_controller_pawn & 0x1FF)).value_or(nullptr);
             if (!entity)
                 continue;
 
