@@ -143,18 +143,17 @@ static void entity_data_thread(c_game* game) {
     }
 }
 
-POINT clickPos{};
-bool dragging = false;
+POINT click_pos{};
+bool dragging{ false };
 
 LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
-    case WM_LBUTTONDOWN:
-    {
+    case WM_LBUTTONDOWN: {
         dragging = true;
         SetCapture(hwnd); // capture mouse even when leaving window
 
-        clickPos.x = GET_X_LPARAM(lParam);
-        clickPos.y = GET_Y_LPARAM(lParam);
+        click_pos.x = GET_X_LPARAM(lParam);
+        click_pos.y = GET_Y_LPARAM(lParam);
         return 0;
     }
     case WM_MOUSEMOVE: {
@@ -162,8 +161,8 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
             POINT p;
             GetCursorPos(&p);
 
-            int newX = p.x - clickPos.x;
-            int newY = p.y - clickPos.y;
+            int newX = p.x - click_pos.x;
+            int newY = p.y - click_pos.y;
 
             SetWindowPos(hwnd, nullptr, newX, newY, 0, 0,
                 SWP_NOZORDER | SWP_NOSIZE);
@@ -177,6 +176,9 @@ LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         ReleaseCapture();
         return 0;
     }
+    case WM_DESTROY:
+        PostQuitMessage(0);
+        return 0;
     }
 
     return DefWindowProc(hwnd, msg, wParam, lParam);
