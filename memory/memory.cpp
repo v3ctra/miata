@@ -16,16 +16,16 @@ bool c_game::initialize() {
     for (Process32First(snapshot.get(), &entry); Process32Next(snapshot.get(), &entry); ) {
         if (target_name.compare(entry.szExeFile) == 0) {
             m_process_id = entry.th32ProcessID;
-            m_process_handle = open_process(m_process_id.value(), PROCESS_VM_READ).value();
+            m_process_handle = *open_process(*m_process_id, PROCESS_VM_READ);
             break;
         }
     }
 
-    if (m_process_id == 0)
+    if (!m_process_id)
         return false;
 
     while (m_client_base == 0) {
-        m_client_base = get_module_by_name(m_process_id.value(), L"client.dll");
+        m_client_base = get_module_by_name(*m_process_id, L"client.dll");
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
     return m_client_base != 0 && m_process_id != 0 && m_process_handle != nullptr;
@@ -47,7 +47,7 @@ std::optional<DWORD64> c_memory::get_module_by_name(DWORD pid, const std::wstrin
 
     do {
         if (target_module.compare(entry.szModule) == 0) {
-            return std::bit_cast<uintptr_t>(entry.modBaseAddr);
+            return reinterpret_cast<uintptr_t>(entry.modBaseAddr);
         }
     } while (Module32NextW(snapshot.get(), &entry));
 

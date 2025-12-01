@@ -1,12 +1,13 @@
 #include "device.hpp"
 
 #include "../thirdparty/daisy.hpp"
+#include "../utils/utils.hpp"
 
 bool c_d3d_device::initialize(const int& width, const int& height) {
 	// create d3d9 interface
 	m_d3d = Microsoft::WRL::ComPtr<IDirect3D9>(Direct3DCreate9(D3D_SDK_VERSION));
 	if (!m_d3d) {
-		MessageBoxA(m_hwnd, "Failed to create D3D interface", "", MB_OK | MB_ICONERROR);
+		show_message_box<wchar_t>(L"Failed to query game info.", L"", buttons::OK | icons::Error, m_hwnd);
 		return false;
 	}
 
@@ -39,7 +40,7 @@ bool c_d3d_device::initialize(const int& width, const int& height) {
 	}
 
 	if (FAILED(res)) {
-		MessageBoxA(m_hwnd, "Failed to create D3D device", "", MB_OK | MB_ICONERROR);
+		show_message_box<wchar_t>(L"Failed to create D3D device.", L"", buttons::OK | icons::Error, m_hwnd);
 		return false;
 	}
 

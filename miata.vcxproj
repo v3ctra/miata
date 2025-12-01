@@ -143,6 +143,7 @@
     <ClInclude Include="memory\memory.hpp" />
     <ClInclude Include="thirdparty\daisy.hpp" />
     <ClInclude Include="utils\utils.hpp" />
+    <ClInclude Include="utils\wrappers\message_box.hpp" />
     <ClInclude Include="valve\offsets.hpp" />
     <ClInclude Include="valve\player_pawn.hpp" />
   </ItemGroup>

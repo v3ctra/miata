@@ -27,7 +27,7 @@ public:
     ~c_game() { }
     bool initialize();
 
-    const auto& get_client_base() noexcept { return this->m_client_base.value(); }
+    const auto& get_client_base() noexcept { return *this->m_client_base; }
 
     template <typename T>
     constexpr std::optional<T> read(const std::uintptr_t& address) const noexcept {
