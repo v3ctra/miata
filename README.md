@@ -4,14 +4,25 @@
 
 Free and open-source radar-hack software for Counter-Strike 2.
 
+## Compiling
+
+### Prerequisites
+
+* **Microsoft Visual Studio 2022** with **Desktop development with C++** workload
+
+### Compiling from source
+
+Open **miata.sln** in Visual Studio 2022, set build configuration to **Release | x64**. Press *Build solution* and you should receive **miata.exe** file.
+
 ## Example Config
 If config.txt doesn't exist - cheat will use default values, defined in entrypoint.
 ```
-radar.pos.x=5       # x position of radar on the screen
-radar.pos.y=5       # y position of radar on the screen
-radar.size.w=128    # width of the radar's window
-radar.size.h=128    # height of the radar's window
-cheat.window.hide=0 # Determines if window should be hidden on the screenshots and recordings
+radar.pos.x=5        # x position of radar on the screen
+radar.pos.y=5        # y position of radar on the screen
+radar.size.w=128     # width of the radar's window
+radar.size.h=128     # height of the radar's window
+cheat.window.hide=0  # Determines if window should be hidden on the screenshots and recordings
+cheat.window.vsync=0 # Determines if window should have vertical sync enabled
 ```
 
 ## Updating
@@ -26,6 +37,9 @@ offsets.client.m_iTeamNum=1003
 offsets.client.m_vOldOrigin=5560
 ```
 Updated offsets can be found [HERE](https://github.com/a2x/cs2-dumper/blob/main/output/offsets.json). and [HERE](https://github.com/a2x/cs2-dumper/blob/main/output/client_dll.json).
+
+## Contribution
+Contributions via Pull Requests are welcome :)
 
 ## Community
 Join the community... https://t.me/precache
