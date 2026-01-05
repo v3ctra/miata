@@ -12,23 +12,28 @@
 #include <string>
 #include <map>
 
-#include "d3d/device.hpp"
-#include "utils/utils.hpp"
-#include "thirdparty/daisy.hpp"
-#include "memory/memory.hpp"
-
-#pragma comment(lib, "d3d9.lib")
-
 #include "valve/player_pawn.hpp"
+
+#include "memory/memory.hpp"
+#include "utils/utils.hpp"
+#include "d3d/device.hpp"
 
 #include "main.hpp"
 
-std::atomic_bool done = false;
+#include "thirdparty/daisy.hpp"
+#pragma comment(lib, "d3d9.lib")
 
-std::vector<c_cs_player_pawn*> m_players{};
-std::mutex m_players_mutex{};
+struct player_data_t {
+    std::vector<c_cs_player_pawn*> player_list{};
+    std::mutex player_mutex{};
+};
 
-static void entity_cache_thread(c_game* game) {
+struct radar_data_t {
+    std::vector<vec2_t> radar_points{};
+    std::mutex radar_points_mutex{};
+};
+
+static void entity_cache_thread(std::stop_source st, c_game* game, player_data_t& players) {
     std::vector<c_cs_player_pawn*> temp_players{};
 
     const auto client_base = game->get_client_base();
@@ -36,8 +41,8 @@ static void entity_cache_thread(c_game* game) {
         return;
     }
 
-    while (!done) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+    while (!st.stop_requested()) {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
         const auto entity_list = game->read<uintptr_t>(client_base + offsets::dwEntityList).value_or(0);
         if (!entity_list)
             continue;
@@ -67,23 +72,20 @@ static void entity_cache_thread(c_game* game) {
             temp_players.emplace_back(entity);
         }
         {
-            std::unique_lock<std::mutex> lock(m_players_mutex);
-            m_players = std::move(temp_players);
+            std::unique_lock<std::mutex> lock(players.player_mutex);
+            players.player_list = std::move(temp_players);
         }
     }
 }
 
-std::vector<vec2_t> radar_points{};
-std::mutex radar_points_mutex{};
-
-static void entity_data_thread(c_game* game) {
+static void entity_data_thread(std::stop_source st, c_game* game, player_data_t& players, radar_data_t& radar_data) {
     std::vector<vec2_t> temp_radar_points{};
 
     const auto client_base = game->get_client_base();
     if (!client_base)
         return;
 
-    while (!done) {
+    while (!st.stop_requested()) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
         vec3_t viewangles = game->read<vec3_t>(client_base + offsets::dwViewAngles).value();
 		if (viewangles.is_zero()) // probably not even in the game
@@ -101,8 +103,8 @@ static void entity_data_thread(c_game* game) {
         radar_center.y = (static_cast<float>(g_config.size_h) / 2);
 
         temp_radar_points.clear();
-        std::unique_lock<std::mutex> lock(m_players_mutex);
-        for (const auto& players : m_players) {
+        std::unique_lock<std::mutex> lock(players.player_mutex);
+        for (const auto& players : players.player_list) {
             if (!players || local_pawn == players || local_team == players->m_iTeamNum(game))
                 continue;
 
@@ -136,17 +138,17 @@ static void entity_data_thread(c_game* game) {
             temp_radar_points.emplace_back(rotated_point);
         }
         {
-            std::unique_lock<std::mutex> lock(radar_points_mutex);
-            radar_points = std::move(temp_radar_points);
+            std::unique_lock<std::mutex> lock(radar_data.radar_points_mutex);
+            radar_data.radar_points = std::move(temp_radar_points);
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 }
 
-POINT click_pos{};
-bool dragging{ false };
+static LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    static POINT click_pos{};
+    static bool dragging{ false };
 
-LRESULT CALLBACK wnd_proc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     switch (msg) {
     case WM_LBUTTONDOWN: {
         dragging = true;
@@ -313,28 +315,34 @@ int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous_instance, LPSTR cmd_li
         return *show_message_box<wchar_t>(L"Failed to create buffer queue", L"", buttons::OK | icons::Error);
     }
 
-    std::thread cache_thread(entity_cache_thread, game.get()); cache_thread.detach();
-    std::thread data_thread(entity_data_thread, game.get()); data_thread.detach();
+    std::stop_source stop_source{};
+
+    player_data_t player_data{};
+    radar_data_t radar_data{};
+
+    std::jthread cache_thread(entity_cache_thread, stop_source, game.get(), std::ref(player_data));
+    std::jthread data_thread(entity_data_thread, stop_source, game.get(), std::ref(player_data), std::ref(radar_data));
    
-    while (!done || FindWindow(L"SDL_app", L"Counter-Strike 2") || !GetAsyncKeyState(VK_DELETE) & 1) {
+    while (!stop_source.stop_requested()) {
         MSG msg{};
         while (::PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE)) {
             ::TranslateMessage(&msg);
             ::DispatchMessage(&msg);
             if (msg.message == WM_QUIT)
-                done = true;
+                stop_source.request_stop();
         }
-        if (done)
-            break;
-        
+        if (!FindWindow(L"SDL_app", L"Counter-Strike 2") || GetAsyncKeyState(VK_DELETE) & 1)
+            stop_source.request_stop();
+
         if (device->begin_rendering()) {
             queue->clear();
             {
-                std::unique_lock<std::mutex> lock(radar_points_mutex);
-                //  send_points_to_serial(radar_points,hSerial);
-                for (const auto& pt : radar_points) {
+                std::unique_lock<std::mutex> lock(radar_data.radar_points_mutex);
+                for (const auto& pt : radar_data.radar_points) {
                     queue->push_filled_rectangle({ pt.x, pt.y }, { 5, 5 }, daisy::color_t(0, 255, 0, 255));
                 }
+                // send_points_to_serial(radar_points,hSerial); leftover. Send list of calculated points to arduino/esp32/any (via COMPORT for example)
+                // and render them on screen. This way you can make an "hardware" radar. :)
 
                 // Vertical center line
                 queue->push_line({ static_cast<float>(g_config.size_w / 2.f), 0.f }, { static_cast<float>(g_config.size_w / 2.f), static_cast<float>(g_config.size_h) }, daisy::color_t(0, 255, 0, 128));

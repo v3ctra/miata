@@ -11,9 +11,12 @@ public:
     c_d3d_device(const HWND& target_window, const bool& vsync) : m_hwnd(target_window) {};
     ~c_d3d_device() = default;
 
+    [[nodiscard]]
     bool initialize(const int& width, const int& height);
 
+    [[nodiscard]]
     bool begin_rendering();
+    
     void end_rendering();
 
     const auto& get() noexcept {
